@@ -4,6 +4,7 @@ import TestResults from './TestResults';
 import { faEdit, faTrash, faCheck, faTimes } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 
 const NFAForm = () => {
   // State declarations
@@ -369,115 +370,239 @@ const NFAForm = () => {
     const titleStyle = { fontSize: 16, fontStyle: 'bold' };
     const sectionStyle = { fontSize: 14, fontStyle: 'bold' };
     const textStyle = { fontSize: 12 };
+    const tableHeaderStyle = { fontSize: 12, fontStyle: 'bold' };
+    const lineHeight = 6;
+    const cellPadding = 3;
+    const maxTableWidth = 150; // Reduced maximum table width
     
+    // Helper function to calculate text width
+    const getTextWidth = (text, style = textStyle) => {
+        return pdf.getStringUnitWidth(text) * style.fontSize;
+    };
+
+    // Helper function to calculate required height for wrapped text
+    const getTextHeight = (text, maxWidth) => {
+        const lines = pdf.splitTextToSize(text, maxWidth);
+        return lines.length * lineHeight;
+    };
+
+    // Helper function to add centered section headers
+    const addSectionHeader = (text) => {
+        pdf.setFontSize(sectionStyle.fontSize);
+        pdf.setFont(undefined, sectionStyle.fontStyle);
+        pdf.text(text, 105, y, { align: 'center' });
+        y += 10;
+    };
+
+    // Helper function to add regular text with bullet points
+    const addBulletPoint = (text, indent = 20) => {
+        pdf.setFontSize(textStyle.fontSize);
+        pdf.setFont(undefined, 'normal');
+        pdf.text(`• ${text}`, indent, y);
+        y += lineHeight;
+    };
+
     // Add Language Description
     if (languageDescription) {
-      pdf.setFontSize(titleStyle.fontSize);
-      pdf.setFont(undefined, titleStyle.fontStyle);
-      pdf.text('Language Description', 105, y, { align: 'center' });
-      y += 10;
-      
-      pdf.setFontSize(textStyle.fontSize);
-      pdf.setFont(undefined, 'normal');
-      const splitDesc = pdf.splitTextToSize(languageDescription, 180);
-      pdf.text(splitDesc, 15, y + 10);
-      y += 10 + (splitDesc.length * 7);
+        addSectionHeader('Language Description');
+        pdf.setFontSize(textStyle.fontSize);
+        const splitDesc = pdf.splitTextToSize(languageDescription, 180);
+        pdf.text(splitDesc, 20, y);
+        y += 10 + (splitDesc.length * lineHeight);
     }
     
     // Add Configuration Section
-    pdf.setFontSize(sectionStyle.fontSize);
-    pdf.setFont(undefined, sectionStyle.fontStyle);
-    pdf.text('NFA Configuration', 15, y + 20);
-    y += 30;
+    addSectionHeader('NFA Configuration');
     
-    pdf.setFontSize(textStyle.fontSize);
-    pdf.setFont(undefined, 'normal');
+    // Configuration Items
+    const configItems = [
+        { label: 'States (Q)', value: Q.join(', ') },
+        { label: 'Initial State (q0)', value: q0.join(', ') },
+        { label: 'Accepting States (F)', value: F.join(', ') },
+        { label: 'Alphabet (E)', value: E.join(', ') }
+    ];
     
-    // States
-    pdf.text(`• States (Q): ${Q.join(', ')}`, 20, y);
-    y += 10;
-    pdf.text(`• Initial State (q0): ${q0.join(', ')}`, 20, y);
-    y += 10;
-    pdf.text(`• Accepting States (F): ${F.join(', ')}`, 20, y);
-    y += 10;  
-    // Alphabet
-    pdf.text(`• Alphabet (E): ${E.join(', ')}`, 20, y);
-    y += 10;
-    
-    // Transitions (with formatted header)
-    pdf.text('• Transitions (T): ', 20, y);
-    y += 10;
-
-    pdf.text('(Current State, Symbol) --> Next States', 25, y);
-    y += 10;
-    
-    T.forEach((t, i) => {
-      const symbol = t[1] === 'ε' ? 'epsilon' : t[1];
-      const transitionText = `${i+1}. ( ${t[0]}, ${symbol} ) --> ${Array.from(t[2]).join(', ')}`;
-      
-      // Check if we need a new page
-      if (y > 250) {
-        pdf.addPage();
-        y = 20;
-      }
-
-      pdf.text(transitionText, 25, y);
-      y += 10;
+    configItems.forEach(item => {
+        addBulletPoint(`${item.label}: ${item.value}`);
+        y += 3;
     });
+    
+    // Transitions Section
+    addBulletPoint('Transitions (T)', 20);
+    y += 3;
 
-    // Emptyness Result
-    if (emptinessResult) {
-      pdf.setFontSize(sectionStyle.fontSize);
-      pdf.setFont(undefined, sectionStyle.fontStyle);
-      y += 5;
-      
-      if (emptinessResult.success) {
-        if(emptinessResult.result){
-          pdf.text('Emptiness Result : NFA launguage is empty', 15, y);
-        }else{
-          pdf.text('Emptiness Result : NFA launguage is not empty', 15, y);
+    // Create compact centered table with max width of 150
+    const drawCenteredTable = (data, startY) => {
+        // Calculate column widths based on content
+        const colWidths = [0, 0, 0]; // Current State, Symbol, Next States
+        
+        // Measure headers
+        pdf.setFontSize(tableHeaderStyle.fontSize);
+        colWidths[0] = Math.max(40, getTextWidth('Current State', tableHeaderStyle) + cellPadding * 2);
+        colWidths[1] = Math.max(30, getTextWidth('Symbol', tableHeaderStyle) + cellPadding * 2);
+        colWidths[2] = Math.max(60, getTextWidth('Next States', tableHeaderStyle) + cellPadding * 2);
+        
+        // Measure data cells
+        pdf.setFontSize(textStyle.fontSize);
+        data.forEach(row => {
+            row.forEach((cell, colIdx) => {
+                const content = colIdx === 1 && cell === 'ε' ? 'ε' : cell;
+                const width = getTextWidth(content) + cellPadding * 2;
+                colWidths[colIdx] = Math.max(colWidths[colIdx], width);
+            });
+        });
+
+        // Adjust columns to fit max width
+        let totalWidth = colWidths.reduce((a, b) => a + b, 0);
+        while (totalWidth > maxTableWidth) {
+            // Reduce the widest column (usually Next States)
+            const maxIndex = colWidths.indexOf(Math.max(...colWidths));
+            colWidths[maxIndex] = Math.max(colWidths[maxIndex] - 5, 40); // Don't go below 40
+            totalWidth = colWidths.reduce((a, b) => a + b, 0);
         }
-      } 
-      y += 5;
-      if (y > 250) {
-          pdf.addPage();
-          y = 20;
-      }
+
+        const tableX = (210 - totalWidth) / 2; // Center table
+        const headerHeight = lineHeight + cellPadding * 2;
+        
+        // Draw table header
+        pdf.setFontSize(tableHeaderStyle.fontSize);
+        pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+        pdf.setFillColor(240, 240, 240);
+        pdf.rect(tableX, startY, totalWidth, headerHeight, 'F');
+        pdf.setDrawColor(0);
+        pdf.rect(tableX, startY, totalWidth, headerHeight);
+        
+        let x = tableX;
+        ['Current State', 'Symbol', 'Next States'].forEach((header, i) => {
+            pdf.text(header, x + colWidths[i]/2, startY + headerHeight/2 + 3, { align: 'center' });
+            if (i < 2) {
+                pdf.line(x + colWidths[i], startY, x + colWidths[i], startY + headerHeight);
+            }
+            x += colWidths[i];
+        });
+
+        // Draw table rows (all cells center-aligned)
+        pdf.setFontSize(textStyle.fontSize);
+        pdf.setFont(undefined, 'normal');
+        let currentY = startY + headerHeight;
+        
+        data.forEach((row, rowIndex) => {
+            // Calculate row height based on tallest cell
+            let rowHeight = headerHeight;
+            const cellHeights = [];
+            
+            row.forEach((cell, colIdx) => {
+                const content = colIdx === 1 && cell === 'ε' ? 'ε' : cell;
+                const cellHeight = getTextHeight(content, colWidths[colIdx] - cellPadding * 2) + cellPadding * 2;
+                cellHeights.push(cellHeight);
+                rowHeight = Math.max(rowHeight, cellHeight);
+            });
+
+            // Check for page break
+            if (currentY + rowHeight > 280) {
+                pdf.addPage();
+                currentY = 20;
+                // Redraw header
+                pdf.setFontSize(tableHeaderStyle.fontSize);
+                pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+                pdf.setFillColor(240, 240, 240);
+                pdf.rect(tableX, currentY, totalWidth, headerHeight, 'F');
+                pdf.setDrawColor(0);
+                pdf.rect(tableX, currentY, totalWidth, headerHeight);
+                
+                x = tableX;
+                ['Current State', 'Symbol', 'Next States'].forEach((header, i) => {
+                    pdf.text(header, x + colWidths[i]/2, currentY + headerHeight/2 + 3, { align: 'center' });
+                    if (i < 2) {
+                        pdf.line(x + colWidths[i], currentY, x + colWidths[i], currentY + headerHeight);
+                    }
+                    x += colWidths[i];
+                });
+                currentY += headerHeight;
+                pdf.setFontSize(textStyle.fontSize);
+            }
+
+            // Alternate row color
+            pdf.setFillColor(rowIndex % 2 === 0 ? 255 : 248, 248, 248);
+            pdf.rect(tableX, currentY, totalWidth, rowHeight, 'F');
+            pdf.setDrawColor(200);
+            pdf.rect(tableX, currentY, totalWidth, rowHeight);
+
+            // Draw all cells center-aligned
+            x = tableX;
+            row.forEach((cell, colIdx) => {
+                const content = colIdx === 1 && cell === 'ε' ? 'ε' : cell;
+                const availableWidth = colWidths[colIdx] - cellPadding * 2;
+                const lines = pdf.splitTextToSize(content, availableWidth);
+                
+                // Vertical centering
+                const cellHeight = cellHeights[colIdx];
+                const textY = currentY + (cellHeight/2) - ((lines.length-1)*lineHeight/2);
+                
+                // Draw cell border if not last column
+                if (colIdx < 2) {
+                    pdf.line(x + colWidths[colIdx], currentY, x + colWidths[colIdx], currentY + rowHeight);
+                }
+                
+                // Center-align all cells
+                pdf.text(lines, x + colWidths[colIdx]/2, textY, { 
+                    align: 'center',
+                    maxWidth: availableWidth 
+                });
+                
+                x += colWidths[colIdx];
+            });
+
+            currentY += rowHeight;
+        });
+
+        return currentY;
+    };
+
+    // Prepare table data
+    const tableData = T.map(t => [
+        t[0], // Current State
+        t[1], // Symbol
+        Array.from(t[2]).join(', ') // Next States
+    ]);
+
+    // Draw the table and update y position
+    y = drawCenteredTable(tableData, y) + 10;
+
+    // Emptiness Result
+    if (emptinessResult?.success) {
+        pdf.setFontSize(sectionStyle.fontSize);
+        pdf.setFont(undefined, sectionStyle.fontStyle);
+        
+        const resultText = emptinessResult.result 
+            ? 'Emptiness Result: Language is empty' 
+            : 'Emptiness Result: Language is not empty';
+        pdf.text(resultText, 20, y);
+        y += 15;
     }
     
-    // Test Cases and Results (merged section)
+    // Test Cases and Results
     if (testCases.length > 0) {
-      y += 10;
-      pdf.setFontSize(sectionStyle.fontSize);
-      pdf.setFont(undefined, sectionStyle.fontStyle);
-      pdf.text('Test Cases & Results', 15, y);
-      y += 15;
-      
-      pdf.setFontSize(textStyle.fontSize);
-      pdf.setFont(undefined, 'normal');
-      
-      testCases.forEach((testCase, i) => {
-        const testCaseText = `Test ${i+1}: ${testCase}`;
-        const resultText = results 
-          ? `Result: ${results.results[i]?.accepted ? 'Accepted' : 'Rejected'}`
-          : 'Not tested yet';
+        addSectionHeader('Test Cases & Results');
         
-        // Check if we need a new page
-        if (y > 250) {
-          pdf.addPage();
-          y = 20;
-        }
-        
-        pdf.text(testCaseText, 20, y);
-        y += 10;
-        pdf.text(resultText, 25, y);
-        y += 15;
-      });
+        testCases.forEach((testCase, i) => {
+            if (y > 250) {
+                pdf.addPage();
+                y = 20;
+            }
+            
+            const result = results?.results[i];
+            const testResult = result ? (result.accepted ? 'Accepted' : 'Rejected') : 'Not tested';
+            
+            addBulletPoint(`Test ${i+1}: "${testCase}"`, 15);
+            pdf.text(`  Result: ${testResult}`, 25, y);
+            y += 10;
+        });
     }
     
     // Save the PDF
     pdf.save(`NFA_Report_${new Date().toISOString().slice(0,10)}.pdf`);
-  };
+};
 
   const checkEmptiness = async () => {
     try {
