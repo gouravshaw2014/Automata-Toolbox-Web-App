@@ -546,149 +546,252 @@ const SAFAForm = () => {
   };
 
   const generateStructuredPDF = () => {
-      const pdf = new jsPDF();
-      let y = 20; // Vertical position tracker
-      
-      // PDF Styles
-      const titleStyle = { fontSize: 16, fontStyle: 'bold' };
-      const sectionStyle = { fontSize: 14, fontStyle: 'bold' };
-      const textStyle = { fontSize: 12 };
-      
-      // Add Language Description
-      if (languageDescription) {
-        pdf.setFontSize(titleStyle.fontSize);
-        pdf.setFont(undefined, titleStyle.fontStyle);
-        pdf.text('Language Description', 105, y, { align: 'center' });
-        y += 10;
-        
-        pdf.setFontSize(textStyle.fontSize);
-        pdf.setFont(undefined, 'normal');
-        const splitDesc = pdf.splitTextToSize(languageDescription, 180);
-        pdf.text(splitDesc, 15, y + 10);
-        y += 10 + (splitDesc.length * 7);
-      }
-      
-      // Add Configuration Section
-      pdf.setFontSize(sectionStyle.fontSize);
-      pdf.setFont(undefined, sectionStyle.fontStyle);
-      pdf.text('SAFA Configuration', 15, y + 20);
-      y += 30;
-      
-      pdf.setFontSize(textStyle.fontSize);
-      pdf.setFont(undefined, 'normal');
-      
-      // States
-      pdf.text(`• States (Q): ${Q.join(', ')}`, 20, y);
-      y += 10;
-      pdf.text(`• Initial State (q0): ${q0}`, 20, y);
-      y += 10;
-      pdf.text(`• Accepting States (F): ${F.join(', ')}`, 20, y);
-      y += 10;
-          
-      // Alphabet
-      pdf.text(`• Alphabet (E): ${E.join(', ')}`, 20, y);
-      y += 10;
-
-      // Sets
-      pdf.text(`• Sets (H): ${H.join(', ')}`, 20, y);
-      y += 10;  
-            
-      // Transitions (with formatted header)
-      pdf.text('• Transitions (T): ', 20, y);
-      y += 10;
+  const pdf = new jsPDF();
+  let y = 20; // Vertical position tracker
+  
+  // PDF Styles
+  const titleStyle = { fontSize: 16, fontStyle: 'bold' };
+  const sectionStyle = { fontSize: 14, fontStyle: 'bold' };
+  const textStyle = { fontSize: 12 };
+  const tableHeaderStyle = { fontSize: 12, fontStyle: 'bold' };
+  const lineHeight = 6;
+  const cellPadding = 3;
+  
+  // Add Language Description
+  if (languageDescription) {
+    pdf.setFontSize(titleStyle.fontSize);
+    pdf.setFont(undefined, titleStyle.fontStyle);
+    pdf.text('Language Description', 105, y, { align: 'center' });
+    y += 10;
     
-      pdf.text('(Current State, Symbol, Set check) --> (Next States, Insertion)  [\'-\' for no insertion]', 25, y);
-      y += 10;
+    pdf.setFontSize(textStyle.fontSize);
+    pdf.setFont(undefined, 'normal');
+    const splitDesc = pdf.splitTextToSize(languageDescription, 180);
+    pdf.text(splitDesc, 20, y + 10);
+    y += 10 + (splitDesc.length * 7);
+  }
+  
+  // Add Configuration Section
+  pdf.setFontSize(sectionStyle.fontSize);
+  pdf.setFont(undefined, sectionStyle.fontStyle);
+  pdf.text('SAFA Configuration', 105, y, { align: 'center' });
+  y += 10;
+  
+  pdf.setFontSize(textStyle.fontSize);
+  pdf.setFont(undefined, 'normal');
+  
+  // States
+  pdf.text(`• States (Q): ${Q.join(', ')}`, 20, y);
+  y += 10;
+  pdf.text(`• Initial State (q0): ${q0}`, 20, y);
+  y += 10;
+  pdf.text(`• Accepting States (F): ${F.join(', ')}`, 20, y);
+  y += 10;
       
-      T.forEach((t, i) => {
+  // Alphabet
+  pdf.text(`• Alphabet (E): ${E.join(', ')}`, 20, y);
+  y += 10;
+
+  // Sets
+  pdf.text(`• Sets (H): ${H.join(', ')}`, 20, y);
+  y += 10;  
+        
+  // Transitions Table
+  pdf.text('• Transitions (T): ', 20, y);
+  y += 10;
+
+  // Draw transitions table
+  const drawTransitionTable = (data, startY) => {
+    // Calculate column widths
+    const colWidths = [25, 20, 40, 30, 55]; // State, Symbol, Set Check, Insertion, Next States
+    const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+    const tableX = 20;
+    const headerHeight = lineHeight + cellPadding * 2;
+    
+    // Header
+    pdf.setFontSize(tableHeaderStyle.fontSize);
+    pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+    pdf.setFillColor(240, 240, 240);
+    pdf.rect(tableX, startY, totalWidth, headerHeight, 'F');
+    pdf.setDrawColor(0);
+    pdf.rect(tableX, startY, totalWidth, headerHeight);
+    
+    let x = tableX;
+    ['State', 'Symbol', 'Set Check', 'Insertion', 'Next States'].forEach((header, i) => {
+        pdf.text(header, x + colWidths[i]/2, startY + headerHeight/2 + 3, { align: 'center' });
+        if (i < 4) {
+            pdf.line(x + colWidths[i], startY, x + colWidths[i], startY + headerHeight);
+        }
+        x += colWidths[i];
+    });
+
+    // Rows
+    pdf.setFontSize(textStyle.fontSize);
+    let currentY = startY + headerHeight;
+    
+    data.forEach((t, rowIndex) => {
         const [fromState, symbol, guardRaw, targets] = t;
 
         // Convert guard h1,1 to !p(h1) and h1,0 to p(h1)
         let set_check = '';
         if (typeof guardRaw === 'string' && guardRaw.includes(',')) {
-          const [varName, flag] = guardRaw.split(',');  
-          set_check = flag === '1' ? `!p(${varName})` : `p(${varName})`;
+            const [varName, flag] = guardRaw.split(',');  
+            set_check = flag === '1' ? `!p(${varName})` : `p(${varName})`;
         } else {
-          set_check = guardRaw; // fallback if it's not in expected format
+            set_check = guardRaw; // fallback if it's not in expected format
         }
 
-        // Convert targets like ["q1,-", "q2,h1"] to [(q1,-), (q2,ins(h1))]
-        const targetText = Array.from(targets)
-          .map(tgt => {
+        // Group targets by operation
+        const targetGroups = {};
+        Array.from(targets).forEach(tgt => {
             const [state, op] = tgt.split(',');
-            if (op === '-') {
-              return `(${state}, -)`;
-            } else {
-              return `(${state}, ins(${op}))`;
+            const operation = op === '-' ? '-' : `ins(${op})`;
+            if (!targetGroups[operation]) {
+                targetGroups[operation] = [];
             }
-          })
-          .join(', ');
-
-        const transitionText = `( ${fromState}, ${symbol}, ${set_check} ) --> ${targetText}`;
-
-        // Check if we need a new page
-        if (y > 250) {
-          pdf.addPage();
-          y = 20;
-        }
-
-        pdf.text(transitionText, 25, y);
-        y += 10;
-      });
-
-      // Emptyness Result
-      if (emptinessResult) {
-        pdf.setFontSize(sectionStyle.fontSize);
-        pdf.setFont(undefined, sectionStyle.fontStyle);
-        y += 5;
-        
-        if (emptinessResult.success) {
-          if(emptinessResult.result){
-            pdf.text('Emptiness Result : SAFA launguage is empty', 15, y);
-          }else{
-            pdf.text('Emptiness Result : SAFA launguage is not empty', 15, y);
-          }
-        } 
-        y += 5;
-        if (y > 250) {
-            pdf.addPage();
-            y = 20;
-        }
-      }
-      
-      // Test Cases and Results (merged section)
-      if (testCases.length > 0) {
-        y += 10;
-        pdf.setFontSize(sectionStyle.fontSize);
-        pdf.setFont(undefined, sectionStyle.fontStyle);
-        pdf.text('Test Cases & Results', 15, y);
-        y += 15;
-        
-        pdf.setFontSize(textStyle.fontSize);
-        pdf.setFont(undefined, 'normal');
-        
-        testCases.forEach((testCase, i) => {
-          const testCaseText = `Test ${i+1}: ${testCase.map(step => `(${step[0]},${step[1]})`).join(', ')}`;
-          const resultText = results 
-            ? `Result: ${results.results[i]?.accepted ? 'Accepted' : 'Rejected'}`
-            : 'Not tested yet';
-          
-          // Check if we need a new page
-          if (y > 250) {
-            pdf.addPage();
-            y = 20;
-          }
-          
-          pdf.text(testCaseText, 20, y);
-          y += 10;
-          pdf.text(resultText, 25, y);
-          y += 15;
+            targetGroups[operation].push(state);
         });
+
+        // Prepare target data with combined states for same operations
+        const targetData = Object.entries(targetGroups).map(([op, states]) => ({
+            insertion: op,
+            states: states.join(', ')
+        }));
+
+        // Check for page break before starting a new transition
+        if (currentY + (targetData.length * (lineHeight + cellPadding * 2)) > 280) {
+            pdf.addPage();
+            currentY = 20;
+            // Redraw header
+            pdf.setFontSize(tableHeaderStyle.fontSize);
+            pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+            pdf.setFillColor(240, 240, 240);
+            pdf.rect(tableX, currentY, totalWidth, headerHeight, 'F');
+            pdf.setDrawColor(0);
+            pdf.rect(tableX, currentY, totalWidth, headerHeight);
+            
+            x = tableX;
+            ['State', 'Symbol', 'Set Check', 'Insertion', 'Next States'].forEach((header, i) => {
+                pdf.text(header, x + colWidths[i]/2, currentY + headerHeight/2 + 3, { align: 'center' });
+                if (i < 4) {
+                    pdf.line(x + colWidths[i], currentY, x + colWidths[i], currentY + headerHeight);
+                }
+                x += colWidths[i];
+            });
+            currentY += headerHeight;
+            pdf.setFontSize(textStyle.fontSize);
+        }
+
+        // Create rows for each operation group
+        targetData.forEach((target, targetIndex) => {
+            // Only show state/symbol/set_check in first row for this transition
+            const row = [
+                targetIndex === 0 ? fromState : '',
+                targetIndex === 0 ? symbol : '',
+                targetIndex === 0 ? set_check : '',
+                target.insertion,
+                target.states
+            ];
+            
+            // Calculate required row height
+            let rowHeight = lineHeight + cellPadding * 2;
+            const cellHeights = [];
+            
+            row.forEach((cell, colIdx) => {
+                const cellHeight = pdf.getTextDimensions(cell, { maxWidth: colWidths[colIdx] - cellPadding * 2 }).h + cellPadding * 2;
+                cellHeights.push(cellHeight);
+                rowHeight = Math.max(rowHeight, cellHeight);
+            });
+
+            // Alternate row color
+            pdf.setFillColor(rowIndex % 2 === 0 ? 255 : 248, 248, 248);
+            pdf.rect(tableX, currentY, totalWidth, rowHeight, 'F');
+            pdf.setDrawColor(200);
+            pdf.rect(tableX, currentY, totalWidth, rowHeight);
+
+            // Draw cells
+            x = tableX;
+            row.forEach((cell, colIdx) => {
+                const lines = pdf.splitTextToSize(cell, colWidths[colIdx] - cellPadding * 2);
+                const textY = currentY + (rowHeight/2) - ((lines.length-1)*lineHeight/2);
+                
+                if (colIdx < 4) {
+                    pdf.line(x + colWidths[colIdx], currentY, x + colWidths[colIdx], currentY + rowHeight);
+                }
+
+                pdf.setFontSize(textStyle.fontSize);
+                pdf.setFont(undefined, 'normal');
+                
+                pdf.text(lines, x + colWidths[colIdx]/2, textY, { 
+                    align: 'center',
+                    maxWidth: colWidths[colIdx] - cellPadding * 2
+                });
+                
+                x += colWidths[colIdx];
+            });
+
+            currentY += rowHeight;
+        });
+    });
+
+    return currentY;
+};
+
+  y = drawTransitionTable(T, y) + 10;
+  
+  // Emptiness Result
+  if (emptinessResult) {
+    pdf.setFontSize(sectionStyle.fontSize);
+    pdf.setFont(undefined, sectionStyle.fontStyle);
+    y += 5;
+    
+    if (emptinessResult.success) {
+      if(emptinessResult.result){
+        pdf.text('Emptiness Result : SAFA language is empty', 20, y);
+      }else{
+        pdf.text('Emptiness Result : SAFA language is not empty', 20, y);
+      }
+    } 
+    y += 15;
+    if (y > 250) {
+        pdf.addPage();
+        y = 20;
+    }
+  }
+  
+  // Test Cases and Results
+  if (testCases.length > 0) {
+    y += 10;
+    pdf.setFontSize(sectionStyle.fontSize);
+    pdf.setFont(undefined, sectionStyle.fontStyle);
+    pdf.text('Test Cases & Results', 105, y, { align: 'center' });
+    y += 15;
+    
+    pdf.setFontSize(textStyle.fontSize);
+    pdf.setFont(undefined, 'normal');
+    
+    testCases.forEach((testCase, i) => {
+      const testCaseText = `Test ${i+1}: ${testCase.map(step => `(${step[0]},${step[1]})`).join(', ')}`;
+      const resultText = results 
+        ? `Result: ${results.results[i]?.accepted ? 'Accepted' : 'Rejected'}`
+        : 'Not tested yet';
+      
+      // Check if we need a new page
+      if (y > 250) {
+        pdf.addPage();
+        y = 20;
       }
       
-      // Save the PDF
-      pdf.save(`SAFA_Report_${new Date().toISOString().slice(0,10)}.pdf`);
-    };
+      pdf.text(testCaseText, 20, y);
+      y += 10;
+      pdf.text(resultText, 25, y);
+      y += 15;
+    });
+  }
+  
+  // Save the PDF
+  pdf.save(`SAFA_Report_${new Date().toISOString().slice(0,10)}.pdf`);
+};
 
   // Test SAFA
   const testSAFA = async () => {

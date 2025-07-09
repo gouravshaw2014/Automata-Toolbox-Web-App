@@ -650,142 +650,345 @@ const RAForm = () => {
     const titleStyle = { fontSize: 16, fontStyle: 'bold' };
     const sectionStyle = { fontSize: 14, fontStyle: 'bold' };
     const textStyle = { fontSize: 12 };
-    
+    const tableHeaderStyle = { fontSize: 12, fontStyle: 'bold' };
+    const lineHeight = 6;
+    const cellPadding = 3;
+    const maxTableWidth = 180;
+
+    // Helper function to calculate text width
+    const getTextWidth = (text, style = textStyle) => {
+        return pdf.getStringUnitWidth(text) * style.fontSize;
+    };
+
+    // Helper function to calculate required height for wrapped text
+    const getTextHeight = (text, maxWidth) => {
+        const lines = pdf.splitTextToSize(text, maxWidth);
+        return lines.length * lineHeight;
+    };
+
     // Add Language Description
     if (languageDescription) {
-      pdf.setFontSize(titleStyle.fontSize);
-      pdf.setFont(undefined, titleStyle.fontStyle);
-      pdf.text('Language Description', 105, y, { align: 'center' });
-      y += 10;
-      
-      pdf.setFontSize(textStyle.fontSize);
-      pdf.setFont(undefined, 'normal');
-      const splitDesc = pdf.splitTextToSize(languageDescription, 180);
-      pdf.text(splitDesc, 15, y + 10);
-      y += 10 + (splitDesc.length * 7);
+        pdf.setFontSize(titleStyle.fontSize);
+        pdf.setFont(undefined, titleStyle.fontStyle);
+        pdf.text('Language Description', 105, y, { align: 'center' });
+        y += 10;
+        
+        pdf.setFontSize(textStyle.fontSize);
+        pdf.setFont(undefined, 'normal');
+        const splitDesc = pdf.splitTextToSize(languageDescription, 180);
+        pdf.text(splitDesc, 20, y);
+        y += 10 + (splitDesc.length * lineHeight);
     }
     
     // Add Configuration Section
     pdf.setFontSize(sectionStyle.fontSize);
     pdf.setFont(undefined, sectionStyle.fontStyle);
-    pdf.text('RA Configuration', 15, y + 20);
-    y += 30;
+    pdf.text('RA Configuration', 105, y, { align: 'center' });
+    y += 15;
     
     pdf.setFontSize(textStyle.fontSize);
     pdf.setFont(undefined, 'normal');
     
-    // States
-    pdf.text(`• States (Q): ${Q.join(', ')}`, 20, y);
-    y += 10;
-    pdf.text(`• Initial State (q0): ${q0}`, 20, y);
-    y += 10;
-    pdf.text(`• Accepting States (F): ${F.join(', ')}`, 20, y);
-    y += 10;
-        
-    // Alphabet
-    pdf.text(`• Alphabet (E): ${E.join(', ')}`, 20, y);
-    y += 10;
-
-    // Registers
-    pdf.text('• Initial Registers Values (R0):', 20, y);
-    y += 10;
-
-    pdf.text('Register Index : Value', 25, y);
-    y += 10;
+    // Configuration Items
+    const configItems = [
+        { label: 'States (Q)', value: Q.join(', ') },
+        { label: 'Initial State (q0)', value: q0 },
+        { label: 'Accepting States (F)', value: F.join(', ') },
+        { label: 'Alphabet (E)', value: E.join(', ') }
+    ];
     
-    Object.entries(R0).forEach(([index, value]) => {
-      // const registerText = `${index}: ${value === null ? '⊥' : value}`;
-      const registerText = `${index}: ${value === null ? '4444' : value}`;
-      // Check if we need a new page
-      if (y > 250) {
-        pdf.addPage();
-        y = 20;
-      }
-      
-      pdf.text(registerText, 25, y);
-      y += 10;
+    configItems.forEach(item => {
+        pdf.text(`• ${item.label}: ${item.value}`, 20, y);
+        y += 10;
     });
 
-    // Check if we need a new page
-      if (y > 250) {
-        pdf.addPage();
-        y = 20;
-      }
+    // Initial Registers Values
+    pdf.text('• Initial Registers Values (R0):', 20, y);
+    y += 10;
+    
+    // Register table
+    const registerEntries = Object.entries(R0).map(([index, value]) => [
+        index, 
+        value === null ? '⊥' : value
+    ]);
+    
+    // Draw register table
+    const drawRegisterTable = (data, startY) => {
+        const colWidths = [40, 40]; // Index, Value
+        const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+        const tableX = 25;
+        const headerHeight = lineHeight + cellPadding * 2;
+        
+        // Header
+        pdf.setFontSize(tableHeaderStyle.fontSize);
+        pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+        pdf.setFillColor(240, 240, 240);
+        pdf.rect(tableX, startY, totalWidth, headerHeight, 'F');
+        pdf.setDrawColor(0);
+        pdf.rect(tableX, startY, totalWidth, headerHeight);
+        
+        pdf.text('Index', tableX + colWidths[0]/2, startY + headerHeight/2 + 3, { align: 'center' });
+        pdf.text('Value', tableX + colWidths[0] + colWidths[1]/2, startY + headerHeight/2 + 3, { align: 'center' });
+        pdf.line(tableX + colWidths[0], startY, tableX + colWidths[0], startY + headerHeight);
+
+        // Rows
+        pdf.setFontSize(textStyle.fontSize);
+        let currentY = startY + headerHeight;
+        
+        data.forEach((row, i) => {
+            if (currentY > 250) {
+                pdf.addPage();
+                currentY = 20;
+                // Redraw header
+                pdf.setFontSize(tableHeaderStyle.fontSize);
+                pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+                pdf.setFillColor(240, 240, 240);
+                pdf.rect(tableX, currentY, totalWidth, headerHeight, 'F');
+                pdf.setDrawColor(0);
+                pdf.rect(tableX, currentY, totalWidth, headerHeight);
+                
+                pdf.text('Index', tableX + colWidths[0]/2, currentY + headerHeight/2 + 3, { align: 'center' });
+                pdf.text('Value', tableX + colWidths[0] + colWidths[1]/2, currentY + headerHeight/2 + 3, { align: 'center' });
+                pdf.line(tableX + colWidths[0], currentY, tableX + colWidths[0], currentY + headerHeight);
+                
+                currentY += headerHeight;
+                pdf.setFontSize(textStyle.fontSize);
+            }
+
+            pdf.setFontSize(textStyle.fontSize);
+            pdf.setFont(undefined, 'normal');
+
+            pdf.setFillColor(i % 2 === 0 ? 255 : 248, 248, 248);
+            pdf.rect(tableX, currentY, totalWidth, lineHeight + cellPadding * 2, 'F');
+            pdf.setDrawColor(200);
+            pdf.rect(tableX, currentY, totalWidth, lineHeight + cellPadding * 2);
+            
+            pdf.text(row[0], tableX + colWidths[0]/2, currentY + lineHeight + cellPadding, { align: 'center' });
+            pdf.text(row[1], tableX + colWidths[0] + colWidths[1]/2, currentY + lineHeight + cellPadding, { align: 'center' });
+            pdf.line(tableX + colWidths[0], currentY, tableX + colWidths[0], currentY + lineHeight + cellPadding * 2);
+            
+            currentY += lineHeight + cellPadding * 2;
+        });
+
+        return currentY;
+    };
+
+    y = drawRegisterTable(registerEntries, y) + 10;
 
     // Update Function
     pdf.text('• Update Function (U):', 20, y);
     y += 10;
 
-    pdf.text('( Current State, Symbol ) : Register Index', 25, y);
-    y += 10;
-    
-    Object.entries(U).forEach(([key, value]) => {
-      const [state, symbol] = JSON.parse(key);
-      const updateText = `( ${state}, ${symbol} ) : ${value}`;
-      
-      // Check if we need a new page
-      if (y > 250) {
-        pdf.addPage();
-        y = 20;
-      }
-      
-      pdf.text(updateText, 25, y);
-      y += 10;
+    // Prepare update function data
+    const updateData = Object.entries(U).map(([key, value]) => {
+        const [state, symbol] = JSON.parse(key);
+        return [state, symbol, value];
     });
-    
-    // Transitions (with formatted header)
-    pdf.text('• Transitions (T): ', 20, y);
+
+    // Draw update function table
+    const drawUpdateTable = (data, startY) => {
+        const colWidths = [50, 40, 40]; // State, Symbol, Register Index
+        const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+        const tableX = 25;
+        const headerHeight = lineHeight + cellPadding * 2;
+        
+        // Header
+        pdf.setFontSize(tableHeaderStyle.fontSize);
+        pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+        pdf.setFillColor(240, 240, 240);
+        pdf.rect(tableX, startY, totalWidth, headerHeight, 'F');
+        pdf.setDrawColor(0);
+        pdf.rect(tableX, startY, totalWidth, headerHeight);
+        
+        pdf.text('State', tableX + colWidths[0]/2, startY + headerHeight/2 + 3, { align: 'center' });
+        pdf.text('Symbol', tableX + colWidths[0] + colWidths[1]/2, startY + headerHeight/2 + 3, { align: 'center' });
+        pdf.text('Reg Index', tableX + colWidths[0] + colWidths[1] + colWidths[2]/2, startY + headerHeight/2 + 3, { align: 'center' });
+        pdf.line(tableX + colWidths[0], startY, tableX + colWidths[0], startY + headerHeight);
+        pdf.line(tableX + colWidths[0] + colWidths[1], startY, tableX + colWidths[0] + colWidths[1], startY + headerHeight);
+
+        // Rows
+        pdf.setFontSize(textStyle.fontSize);
+        let currentY = startY + headerHeight;
+        
+        data.forEach((row, i) => {
+            if (currentY > 250) {
+                pdf.addPage();
+                currentY = 20;
+                // Redraw header
+                pdf.setFontSize(tableHeaderStyle.fontSize);
+                pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+                pdf.setFillColor(240, 240, 240);
+                pdf.rect(tableX, currentY, totalWidth, headerHeight, 'F');
+                pdf.setDrawColor(0);
+                pdf.rect(tableX, currentY, totalWidth, headerHeight);
+                
+                pdf.text('State', tableX + colWidths[0]/2, currentY + headerHeight/2 + 3, { align: 'center' });
+                pdf.text('Symbol', tableX + colWidths[0] + colWidths[1]/2, currentY + headerHeight/2 + 3, { align: 'center' });
+                pdf.text('Reg Index', tableX + colWidths[0] + colWidths[1] + colWidths[2]/2, currentY + headerHeight/2 + 3, { align: 'center' });
+                pdf.line(tableX + colWidths[0], currentY, tableX + colWidths[0], currentY + headerHeight);
+                pdf.line(tableX + colWidths[0] + colWidths[1], currentY, tableX + colWidths[0] + colWidths[1], currentY + headerHeight);
+                
+                currentY += headerHeight;
+                pdf.setFontSize(textStyle.fontSize);
+            }
+
+            pdf.setFillColor(i % 2 === 0 ? 255 : 248, 248, 248);
+            pdf.rect(tableX, currentY, totalWidth, lineHeight + cellPadding * 2, 'F');
+            pdf.setDrawColor(200);
+            pdf.rect(tableX, currentY, totalWidth, lineHeight + cellPadding * 2);
+
+            pdf.setFontSize(textStyle.fontSize);
+            pdf.setFont(undefined, 'normal');
+            
+            pdf.text(row[0], tableX + colWidths[0]/2, currentY + lineHeight + cellPadding, { align: 'center' });
+            pdf.text(row[1], tableX + colWidths[0] + colWidths[1]/2, currentY + lineHeight + cellPadding, { align: 'center' });
+            pdf.text(row[2], tableX + colWidths[0] + colWidths[1] + colWidths[2]/2, currentY + lineHeight + cellPadding, { align: 'center' });
+            pdf.line(tableX + colWidths[0], currentY, tableX + colWidths[0], currentY + lineHeight + cellPadding * 2);
+            pdf.line(tableX + colWidths[0] + colWidths[1], currentY, tableX + colWidths[0] + colWidths[1], currentY + lineHeight + cellPadding * 2);
+            
+            currentY += lineHeight + cellPadding * 2;
+        });
+
+        return currentY;
+    };
+
+    y = drawUpdateTable(updateData, y) + 10;
+
+    // Transitions Table
+    pdf.text('• Transitions (T):', 20, y);
     y += 10;
-  
-    pdf.text('(Current State, Symbol, Register Index) --> Next States', 25, y);
-    y += 10;
-    
-    T.forEach((t, i) => {
-      const transitionText = `${i+1}. ( ${t[0]} ,${t[1]}, ${t[2]} ) --> ${Array.from(t[3]).join(', ')}`;
-      
-      // Check if we need a new page
-      if (y > 250) {
-        pdf.addPage();
-        y = 20;
-      }
-      
-      pdf.text(transitionText, 25, y);
-      y += 10;
-    });
-    
-    // Test Cases and Results (merged section)
+
+    // Prepare transitions data
+    const transitionData = T.map(t => [t[0], t[1], t[2], Array.from(t[3]).join(', ')]);
+
+    // Draw transitions table
+    const drawTransitionTable = (data, startY) => {
+        // Calculate column widths based on content
+        const colWidths = [35, 25, 25, 70]; // State, Symbol, Reg Index, Next States
+        
+        const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+        const tableX = 25;
+        const headerHeight = lineHeight + cellPadding * 2;
+        
+        // Header
+        pdf.setFontSize(tableHeaderStyle.fontSize);
+        pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+        pdf.setFillColor(240, 240, 240);
+        pdf.rect(tableX, startY, totalWidth, headerHeight, 'F');
+        pdf.setDrawColor(0);
+        pdf.rect(tableX, startY, totalWidth, headerHeight);
+        
+        let x = tableX;
+        ['State', 'Symbol', 'RegIdx', 'Next States'].forEach((header, i) => {
+            pdf.text(header, x + colWidths[i]/2, startY + headerHeight/2 + 3, { align: 'center' });
+            if (i < 3) {
+                pdf.line(x + colWidths[i], startY, x + colWidths[i], startY + headerHeight);
+            }
+            x += colWidths[i];
+        });
+
+        // Rows
+        pdf.setFontSize(textStyle.fontSize);
+        let currentY = startY + headerHeight;
+        
+        data.forEach((row, rowIndex) => {
+            // Calculate required row height
+            let rowHeight = lineHeight + cellPadding * 2;
+            const cellHeights = [];
+            
+            row.forEach((cell, colIdx) => {
+                const cellHeight = getTextHeight(cell, colWidths[colIdx] - cellPadding * 2) + cellPadding * 2;
+                cellHeights.push(cellHeight);
+                rowHeight = Math.max(rowHeight, cellHeight);
+            });
+
+            // Check for page break
+            if (currentY + rowHeight > 280) {
+                pdf.addPage();
+                currentY = 20;
+                // Redraw header
+                pdf.setFontSize(tableHeaderStyle.fontSize);
+                pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+                pdf.setFillColor(240, 240, 240);
+                pdf.rect(tableX, currentY, totalWidth, headerHeight, 'F');
+                pdf.setDrawColor(0);
+                pdf.rect(tableX, currentY, totalWidth, headerHeight);
+                
+                x = tableX;
+                ['State', 'Symbol', 'RegIdx', 'Next States'].forEach((header, i) => {
+                    pdf.text(header, x + colWidths[i]/2, currentY + headerHeight/2 + 3, { align: 'center' });
+                    if (i < 3) {
+                        pdf.line(x + colWidths[i], currentY, x + colWidths[i], currentY + headerHeight);
+                    }
+                    x += colWidths[i];
+                });
+                currentY += headerHeight;
+                pdf.setFontSize(textStyle.fontSize);
+            }
+
+            // Alternate row color
+            pdf.setFillColor(rowIndex % 2 === 0 ? 255 : 248, 248, 248);
+            pdf.rect(tableX, currentY, totalWidth, rowHeight, 'F');
+            pdf.setDrawColor(200);
+            pdf.rect(tableX, currentY, totalWidth, rowHeight);
+
+            // Draw cells (all center-aligned)
+            x = tableX;
+            row.forEach((cell, colIdx) => {
+                const lines = pdf.splitTextToSize(cell, colWidths[colIdx] - cellPadding * 2);
+                const textY = currentY + (rowHeight/2) - ((lines.length-1)*lineHeight/2);
+                
+                if (colIdx < 3) {
+                    pdf.line(x + colWidths[colIdx], currentY, x + colWidths[colIdx], currentY + rowHeight);
+                }
+
+                pdf.setFontSize(textStyle.fontSize);
+                pdf.setFont(undefined, 'normal');
+                
+                pdf.text(lines, x + colWidths[colIdx]/2, textY, { 
+                    align: 'center',
+                    maxWidth: colWidths[colIdx] - cellPadding * 2
+                });
+                
+                x += colWidths[colIdx];
+            });
+
+            currentY += rowHeight;
+        });
+
+        return currentY;
+    };
+
+    y = drawTransitionTable(transitionData, y) + 10;
+
+    // Test Cases and Results
     if (testCases.length > 0) {
-      y += 10;
-      pdf.setFontSize(sectionStyle.fontSize);
-      pdf.setFont(undefined, sectionStyle.fontStyle);
-      pdf.text('Test Cases & Results', 15, y);
-      y += 15;
-      
-      pdf.setFontSize(textStyle.fontSize);
-      pdf.setFont(undefined, 'normal');
-      
-      testCases.forEach((testCase, i) => {
-        const testCaseText = `Test ${i+1}: ${testCase.map(step => `(${step[0]},${step[1]})`).join(', ')}`;
-        const resultText = results 
-          ? `Result: ${results.results[i]?.accepted ? 'Accepted' : 'Rejected'}`
-          : 'Not tested yet';
-        
-        // Check if we need a new page
-        if (y > 250) {
-          pdf.addPage();
-          y = 20;
-        }
-        
-        pdf.text(testCaseText, 20, y);
-        y += 10;
-        pdf.text(resultText, 25, y);
+        pdf.setFontSize(sectionStyle.fontSize);
+        pdf.setFont(undefined, sectionStyle.fontStyle);
+        pdf.text('Test Cases & Results', 105, y, { align: 'center' });
         y += 15;
-      });
+        
+        testCases.forEach((testCase, i) => {
+            if (y > 250) {
+                pdf.addPage();
+                y = 20;
+            }
+            
+            const result = results?.results[i];
+            const testResult = result ? (result.accepted ? 'Accepted' : 'Rejected') : 'Not tested';
+            
+            pdf.setFontSize(textStyle.fontSize);
+            pdf.setFont(undefined, 'normal');
+
+            pdf.text(`Test ${i+1}: ${testCase.map(step => `(${step[0]},${step[1]})`).join(', ')}`, 20, y);
+            pdf.text(`• Result: ${testResult}`, 25, y + 10);
+            y += 20;
+        });
     }
     
     // Save the PDF
     pdf.save(`RA_Report_${new Date().toISOString().slice(0,10)}.pdf`);
-  };
+};
 
   // Test the automaton with validation
   const testAutomaton = async () => {

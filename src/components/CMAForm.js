@@ -457,6 +457,9 @@ const CMAForm = () => {
   const titleStyle = { fontSize: 16, fontStyle: 'bold' };
   const sectionStyle = { fontSize: 14, fontStyle: 'bold' };
   const textStyle = { fontSize: 12 };
+  const tableHeaderStyle = { fontSize: 12, fontStyle: 'bold' };
+  const lineHeight = 6;
+  const cellPadding = 3;
   
   // Add Language Description
   if (languageDescription) {
@@ -468,15 +471,15 @@ const CMAForm = () => {
     pdf.setFontSize(textStyle.fontSize);
     pdf.setFont(undefined, 'normal');
     const splitDesc = pdf.splitTextToSize(languageDescription, 180);
-    pdf.text(splitDesc, 15, y + 10);
+    pdf.text(splitDesc, 20, y + 10);
     y += 10 + (splitDesc.length * 7);
   }
   
   // Add Configuration Section
   pdf.setFontSize(sectionStyle.fontSize);
   pdf.setFont(undefined, sectionStyle.fontStyle);
-  pdf.text('CMA Configuration', 15, y + 20);
-  y += 30;
+  pdf.text('CMA Configuration', 105, y, { align: 'center' });
+  y += 10;
   
   pdf.setFontSize(textStyle.fontSize);
   pdf.setFont(undefined, 'normal');
@@ -495,33 +498,124 @@ const CMAForm = () => {
   pdf.text(`• Alphabet (E): ${E.join(', ')}`, 20, y);
   y += 10;
   
-  // Transitions (with formatted header)
+  // Transitions Table
   pdf.text('• Transitions (T): ', 20, y);
   y += 10;
 
-  pdf.text('(Current State, Symbol, Last Occurrence State) --> Next States', 25, y);
-  y += 10;
-  
-  T.forEach((t, i) => {
-    const transitionText = `${i+1}. ( ${t[0]} ,${t[1]}, ${t[2]} ) --> ${Array.from(t[3]).join(', ')}`;
+  // Draw transitions table
+  const drawTransitionTable = (data, startY) => {
+    // Calculate column widths
+    const colWidths = [30, 25, 50, 65]; // State, Symbol, Last Occurrence, Next States
+    const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+    const tableX = 20;
+    const headerHeight = lineHeight + cellPadding * 2;
     
-    // Check if we need a new page
-    if (y > 250) {
-      pdf.addPage();
-      y = 20;
-    }
+    // Header
+    pdf.setFontSize(tableHeaderStyle.fontSize);
+    pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+    pdf.setFillColor(240, 240, 240);
+    pdf.rect(tableX, startY, totalWidth, headerHeight, 'F');
+    pdf.setDrawColor(0);
+    pdf.rect(tableX, startY, totalWidth, headerHeight);
     
-    pdf.text(transitionText, 25, y);
-    y += 10;
-  });
+    let x = tableX;
+    ['State', 'Symbol', 'Last Occurrence', 'Next States'].forEach((header, i) => {
+      pdf.text(header, x + colWidths[i]/2, startY + headerHeight/2 + 3, { align: 'center' });
+      if (i < 3) {
+        pdf.line(x + colWidths[i], startY, x + colWidths[i], startY + headerHeight);
+      }
+      x += colWidths[i];
+    });
+
+    // Rows
+    pdf.setFontSize(textStyle.fontSize);
+    let currentY = startY + headerHeight;
+    
+    data.forEach((t, rowIndex) => {
+      // Prepare row data
+      const row = [
+        t[0], // State
+        t[1], // Symbol
+        t[2], // Last Occurrence
+        Array.from(t[3]).join(', ') // Next States
+      ];
+      
+      // Calculate required row height
+      let rowHeight = lineHeight + cellPadding * 2;
+      const cellHeights = [];
+      
+      row.forEach((cell, colIdx) => {
+        const cellHeight = pdf.getTextDimensions(cell, { maxWidth: colWidths[colIdx] - cellPadding * 2 }).h + cellPadding * 2;
+        cellHeights.push(cellHeight);
+        rowHeight = Math.max(rowHeight, cellHeight);
+      });
+
+      // Check for page break
+      if (currentY + rowHeight > 280) {
+        pdf.addPage();
+        currentY = 20;
+        // Redraw header
+        pdf.setFontSize(tableHeaderStyle.fontSize);
+        pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+        pdf.setFillColor(240, 240, 240);
+        pdf.rect(tableX, currentY, totalWidth, headerHeight, 'F');
+        pdf.setDrawColor(0);
+        pdf.rect(tableX, currentY, totalWidth, headerHeight);
+        
+        x = tableX;
+        ['State', 'Symbol', 'Last Occurrence', 'Next States'].forEach((header, i) => {
+          pdf.text(header, x + colWidths[i]/2, currentY + headerHeight/2 + 3, { align: 'center' });
+          if (i < 3) {
+            pdf.line(x + colWidths[i], currentY, x + colWidths[i], currentY + headerHeight);
+          }
+          x += colWidths[i];
+        });
+        currentY += headerHeight;
+        pdf.setFontSize(textStyle.fontSize);
+      }
+
+      // Alternate row color
+      pdf.setFillColor(rowIndex % 2 === 0 ? 255 : 248, 248, 248);
+      pdf.rect(tableX, currentY, totalWidth, rowHeight, 'F');
+      pdf.setDrawColor(200);
+      pdf.rect(tableX, currentY, totalWidth, rowHeight);
+
+      // Draw cells
+      x = tableX;
+      row.forEach((cell, colIdx) => {
+        const lines = pdf.splitTextToSize(cell, colWidths[colIdx] - cellPadding * 2);
+        const textY = currentY + (rowHeight/2) - ((lines.length-1)*lineHeight/2);
+        
+        if (colIdx < 3) {
+          pdf.line(x + colWidths[colIdx], currentY, x + colWidths[colIdx], currentY + rowHeight);
+        }
+
+        pdf.setFontSize(textStyle.fontSize);
+        pdf.setFont(undefined, 'normal');
+        
+        pdf.text(lines, x + colWidths[colIdx]/2, textY, { 
+          align: 'center',
+          maxWidth: colWidths[colIdx] - cellPadding * 2
+        });
+        
+        x += colWidths[colIdx];
+      });
+
+      currentY += rowHeight;
+    });
+
+    return currentY;
+  };
+
+  y = drawTransitionTable(T, y) + 10;
   
   // Test Cases and Results (merged section)
   if (testCases.length > 0) {
     y += 10;
     pdf.setFontSize(sectionStyle.fontSize);
     pdf.setFont(undefined, sectionStyle.fontStyle);
-    pdf.text('Test Cases & Results', 15, y);
-    y += 15;
+    pdf.text('Test Cases & Results', 105, y, { align: 'center' });
+    y += 10;
     
     pdf.setFontSize(textStyle.fontSize);
     pdf.setFont(undefined, 'normal');

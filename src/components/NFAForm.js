@@ -406,6 +406,7 @@ const NFAForm = () => {
     if (languageDescription) {
         addSectionHeader('Language Description');
         pdf.setFontSize(textStyle.fontSize);
+        pdf.setFont(undefined, 'normal');
         const splitDesc = pdf.splitTextToSize(languageDescription, 180);
         pdf.text(splitDesc, 20, y);
         y += 10 + (splitDesc.length * lineHeight);

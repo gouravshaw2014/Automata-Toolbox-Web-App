@@ -457,108 +457,198 @@ const CCAForm = () => {
   };
 
   const generateStructuredPDF = () => {
-        const pdf = new jsPDF();
-        let y = 20; // Vertical position tracker
+    const pdf = new jsPDF();
+    let y = 20; // Vertical position tracker
+    
+    // PDF Styles
+    const titleStyle = { fontSize: 16, fontStyle: 'bold' };
+    const sectionStyle = { fontSize: 14, fontStyle: 'bold' };
+    const textStyle = { fontSize: 12 };
+    const tableHeaderStyle = { fontSize: 12, fontStyle: 'bold' };
+    const lineHeight = 6;
+    const cellPadding = 3;
+    
+    // Add Language Description
+    if (languageDescription) {
+        pdf.setFontSize(titleStyle.fontSize);
+        pdf.setFont(undefined, titleStyle.fontStyle);
+        pdf.text('Language Description', 105, y, { align: 'center' });
+        y += 10;
         
-        // PDF Styles
-        const titleStyle = { fontSize: 16, fontStyle: 'bold' };
-        const sectionStyle = { fontSize: 14, fontStyle: 'bold' };
-        const textStyle = { fontSize: 12 };
+        pdf.setFontSize(textStyle.fontSize);
+        pdf.setFont(undefined, 'normal');
+        const splitDesc = pdf.splitTextToSize(languageDescription, 180);
+        pdf.text(splitDesc, 20, y + 10);
+        y += 10 + (splitDesc.length * 7);
+    }
+    
+    // Add Configuration Section
+    pdf.setFontSize(sectionStyle.fontSize);
+    pdf.setFont(undefined, sectionStyle.fontStyle);
+    pdf.text('CCA Configuration', 105, y, { align: 'center' });
+    y += 10;
+    
+    pdf.setFontSize(textStyle.fontSize);
+    pdf.setFont(undefined, 'normal');
+    
+    // States
+    pdf.text(`• States (Q): ${Q.join(', ')}`, 20, y);
+    y += 10;
+    pdf.text(`• Initial States (I): ${I.join(', ')}`, 20, y);
+    y += 10;
+    pdf.text(`• Accepting States (F): ${F.join(', ')}`, 20, y);
+    y += 10;
         
-        // Add Language Description
-        if (languageDescription) {
-          pdf.setFontSize(titleStyle.fontSize);
-          pdf.setFont(undefined, titleStyle.fontStyle);
-          pdf.text('Language Description', 105, y, { align: 'center' });
-          y += 10;
+    // Alphabet
+    pdf.text(`• Alphabet (E): ${E.join(', ')}`, 20, y);
+    y += 10; 
           
-          pdf.setFontSize(textStyle.fontSize);
-          pdf.setFont(undefined, 'normal');
-          const splitDesc = pdf.splitTextToSize(languageDescription, 180);
-          pdf.text(splitDesc, 15, y + 10);
-          y += 10 + (splitDesc.length * 7);
-        }
+    // Transitions (with formatted header)
+    pdf.text('• Transitions (T): ', 20, y);
+    y += 10;
+  
+    // Draw transitions table
+    const drawTransitionTable = (data, startY) => {
+        // Calculate column widths
+        const colWidths = [25, 20, 40, 30, 55]; // State, Symbol, Condition, Instruction, Next States
+        const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+        const tableX = 20;
+        const headerHeight = lineHeight + cellPadding * 2;
         
-        // Add Configuration Section
+        // Header
+        pdf.setFontSize(tableHeaderStyle.fontSize);
+        pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+        pdf.setFillColor(240, 240, 240);
+        pdf.rect(tableX, startY, totalWidth, headerHeight, 'F');
+        pdf.setDrawColor(0);
+        pdf.rect(tableX, startY, totalWidth, headerHeight);
+        
+        let x = tableX;
+        ['State', 'Symbol', 'Condition', 'Instruction', 'Next States'].forEach((header, i) => {
+            pdf.text(header, x + colWidths[i]/2, startY + headerHeight/2 + 3, { align: 'center' });
+            if (i < 4) {
+                pdf.line(x + colWidths[i], startY, x + colWidths[i], startY + headerHeight);
+            }
+            x += colWidths[i];
+        });
+
+        // Rows
+        pdf.setFontSize(textStyle.fontSize);
+        let currentY = startY + headerHeight;
+        
+        data.forEach((t, rowIndex) => {
+            // Prepare row data
+            const formattedCondition = `(${t[2][0]}, ${t[2][1]})`;
+            const row = [
+                t[0], // State
+                t[1], // Symbol
+                formattedCondition, // Condition
+                t[3], // Instruction
+                Array.from(t[4]).join(', ') // Next States
+            ];
+            
+            // Calculate required row height
+            let rowHeight = lineHeight + cellPadding * 2;
+            const cellHeights = [];
+            
+            row.forEach((cell, colIdx) => {
+                const cellHeight = pdf.getTextDimensions(cell, { maxWidth: colWidths[colIdx] - cellPadding * 2 }).h + cellPadding * 2;
+                cellHeights.push(cellHeight);
+                rowHeight = Math.max(rowHeight, cellHeight);
+            });
+
+            // Check for page break
+            if (currentY + rowHeight > 280) {
+                pdf.addPage();
+                currentY = 20;
+                // Redraw header
+                pdf.setFontSize(tableHeaderStyle.fontSize);
+                pdf.setFont(undefined, tableHeaderStyle.fontStyle);
+                pdf.setFillColor(240, 240, 240);
+                pdf.rect(tableX, currentY, totalWidth, headerHeight, 'F');
+                pdf.setDrawColor(0);
+                pdf.rect(tableX, currentY, totalWidth, headerHeight);
+                
+                x = tableX;
+                ['State', 'Symbol', 'Condition', 'Instruction', 'Next States'].forEach((header, i) => {
+                    pdf.text(header, x + colWidths[i]/2, currentY + headerHeight/2 + 3, { align: 'center' });
+                    if (i < 4) {
+                        pdf.line(x + colWidths[i], currentY, x + colWidths[i], currentY + headerHeight);
+                    }
+                    x += colWidths[i];
+                });
+                currentY += headerHeight;
+                pdf.setFontSize(textStyle.fontSize);
+            }
+
+            // Alternate row color
+            pdf.setFillColor(rowIndex % 2 === 0 ? 255 : 248, 248, 248);
+            pdf.rect(tableX, currentY, totalWidth, rowHeight, 'F');
+            pdf.setDrawColor(200);
+            pdf.rect(tableX, currentY, totalWidth, rowHeight);
+
+            // Draw cells
+            x = tableX;
+            row.forEach((cell, colIdx) => {
+                const lines = pdf.splitTextToSize(cell, colWidths[colIdx] - cellPadding * 2);
+                const textY = currentY + (rowHeight/2) - ((lines.length-1)*lineHeight/2);
+                
+                if (colIdx < 4) {
+                    pdf.line(x + colWidths[colIdx], currentY, x + colWidths[colIdx], currentY + rowHeight);
+                }
+
+                pdf.setFontSize(textStyle.fontSize);
+                pdf.setFont(undefined, 'normal');
+                
+                pdf.text(lines, x + colWidths[colIdx]/2, textY, { 
+                    align: 'center',
+                    maxWidth: colWidths[colIdx] - cellPadding * 2
+                });
+                
+                x += colWidths[colIdx];
+            });
+
+            currentY += rowHeight;
+        });
+
+        return currentY;
+    };
+
+    y = drawTransitionTable(T, y) + 10;
+    
+    // Test Cases and Results (merged section)
+    if (testCases.length > 0) {
+        y += 10;
         pdf.setFontSize(sectionStyle.fontSize);
         pdf.setFont(undefined, sectionStyle.fontStyle);
-        pdf.text('CCA Configuration', 15, y + 20);
-        y += 30;
+        pdf.text('Test Cases & Results', 15, y);
+        y += 15;
         
         pdf.setFontSize(textStyle.fontSize);
         pdf.setFont(undefined, 'normal');
         
-        // States
-        pdf.text(`• States (Q): ${Q.join(', ')}`, 20, y);
-        y += 10;
-        pdf.text(`• Initial States (I): ${I.join(', ')}`, 20, y);
-        y += 10;
-        pdf.text(`• Accepting States (F): ${F.join(', ')}`, 20, y);
-        y += 10;
-            
-        // Alphabet
-        pdf.text(`• Alphabet (E): ${E.join(', ')}`, 20, y);
-        y += 10; 
-              
-        // Transitions (with formatted header)
-        pdf.text('• Transitions (T): ', 20, y);
-        y += 10;
-      
-        pdf.text('(Current State, Symbol, (Operator condition,Value), Action) --> Next States', 25, y);
-        y += 10;
-
-        pdf.text('Operator condition = {<, <=, =, >=, >, !=}', 25, y);
-        y += 10;
-
-        pdf.text('Action = {* : reset}, {0 : no change} , {+n : add n}', 25, y);
-        y += 10;
-        
-        T.forEach((t, i) => {
-          const transitionText = `${i+1}. ( ${t[0]} ,${t[1]}, (${t[2]}), ${t[3]} ) --> ${Array.from(t[4]).join(', ')}`;
-          
-          // Check if we need a new page
-          if (y > 250) {
-            pdf.addPage();
-            y = 20;
-          }
-          
-          pdf.text(transitionText, 25, y);
-          y += 10;
-        });
-        
-        // Test Cases and Results (merged section)
-        if (testCases.length > 0) {
-          y += 10;
-          pdf.setFontSize(sectionStyle.fontSize);
-          pdf.setFont(undefined, sectionStyle.fontStyle);
-          pdf.text('Test Cases & Results', 15, y);
-          y += 15;
-          
-          pdf.setFontSize(textStyle.fontSize);
-          pdf.setFont(undefined, 'normal');
-          
-          testCases.forEach((testCase, i) => {
+        testCases.forEach((testCase, i) => {
             const testCaseText = `Test ${i+1}: ${testCase.map(step => `(${step[0]},${step[1]})`).join(', ')}`;
             const resultText = results 
-              ? `Result: ${results.results[i]?.accepted ? 'Accepted' : 'Rejected'}`
-              : 'Not tested yet';
+                ? `Result: ${results.results[i]?.accepted ? 'Accepted' : 'Rejected'}`
+                : 'Not tested yet';
             
             // Check if we need a new page
             if (y > 250) {
-              pdf.addPage();
-              y = 20;
+                pdf.addPage();
+                y = 20;
             }
             
             pdf.text(testCaseText, 20, y);
             y += 10;
             pdf.text(resultText, 25, y);
             y += 15;
-          });
-        }
-        
-        // Save the PDF
-        pdf.save(`CCA_Report_${new Date().toISOString().slice(0,10)}.pdf`);
-      };
+        });
+    }
+    
+    // Save the PDF
+    pdf.save(`CCA_Report_${new Date().toISOString().slice(0,10)}.pdf`);
+};
 
   // Test the automaton with validation
   const testAutomaton = async () => {
