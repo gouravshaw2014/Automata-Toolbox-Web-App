@@ -582,7 +582,7 @@ const CCAForm = () => {
             }
 
             // Alternate row color
-            pdf.setFillColor(rowIndex % 2 === 0 ? 255 : 248, 248, 248);
+            pdf.setFillColor(rowIndex % 2 === 0 ? (255, 255, 255) : (248, 248, 248));
             pdf.rect(tableX, currentY, totalWidth, rowHeight, 'F');
             pdf.setDrawColor(200);
             pdf.rect(tableX, currentY, totalWidth, rowHeight);

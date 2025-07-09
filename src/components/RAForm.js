@@ -832,7 +832,7 @@ const RAForm = () => {
                 pdf.setFontSize(textStyle.fontSize);
             }
 
-            pdf.setFillColor(i % 2 === 0 ? 255 : 248, 248, 248);
+            pdf.setFillColor(i % 2 === 0 ? (255, 255, 255) : (248, 248, 248));
             pdf.rect(tableX, currentY, totalWidth, lineHeight + cellPadding * 2, 'F');
             pdf.setDrawColor(200);
             pdf.rect(tableX, currentY, totalWidth, lineHeight + cellPadding * 2);
@@ -927,7 +927,7 @@ const RAForm = () => {
             }
 
             // Alternate row color
-            pdf.setFillColor(rowIndex % 2 === 0 ? 255 : 248, 248, 248);
+            pdf.setFillColor(rowIndex % 2 === 0 ? (255, 255, 255) : (248, 248, 248));
             pdf.rect(tableX, currentY, totalWidth, rowHeight, 'F');
             pdf.setDrawColor(200);
             pdf.rect(tableX, currentY, totalWidth, rowHeight);

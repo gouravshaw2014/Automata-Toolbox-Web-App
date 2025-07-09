@@ -629,6 +629,9 @@ const SAFAForm = () => {
     pdf.setFontSize(textStyle.fontSize);
     let currentY = startY + headerHeight;
     
+    // First process all transitions to combine identical rows
+    const combinedRows = [];
+    
     data.forEach((t, rowIndex) => {
         const [fromState, symbol, guardRaw, targets] = t;
 
@@ -641,25 +644,40 @@ const SAFAForm = () => {
             set_check = guardRaw; // fallback if it's not in expected format
         }
 
-        // Group targets by operation
-        const targetGroups = {};
+        // Process each target
         Array.from(targets).forEach(tgt => {
             const [state, op] = tgt.split(',');
-            const operation = op === '-' ? '-' : `ins(${op})`;
-            if (!targetGroups[operation]) {
-                targetGroups[operation] = [];
+            const insertion = op === '-' ? '-' : `ins(${op})`;
+            
+            // Create a key for comparison (all columns except Next States)
+            const rowKey = `${fromState}|${symbol}|${set_check}|${insertion}`;
+            
+            // Find existing matching row
+            const existingRow = combinedRows.find(r => r.key === rowKey);
+            
+            if (existingRow) {
+                // Add this state to the existing row's Next States
+                if (!existingRow.nextStates.includes(state)) {
+                    existingRow.nextStates.push(state);
+                }
+            } else {
+                // Create new row
+                combinedRows.push({
+                    key: rowKey,
+                    fromState,
+                    symbol,
+                    set_check,
+                    insertion,
+                    nextStates: [state]
+                });
             }
-            targetGroups[operation].push(state);
         });
+    });
 
-        // Prepare target data with combined states for same operations
-        const targetData = Object.entries(targetGroups).map(([op, states]) => ({
-            insertion: op,
-            states: states.join(', ')
-        }));
-
-        // Check for page break before starting a new transition
-        if (currentY + (targetData.length * (lineHeight + cellPadding * 2)) > 280) {
+    // Now draw the combined rows
+    combinedRows.forEach((row, rowIndex) => {
+        // Check for page break
+        if (currentY + (lineHeight + cellPadding * 2) > 280) {
             pdf.addPage();
             currentY = 20;
             // Redraw header
@@ -682,56 +700,53 @@ const SAFAForm = () => {
             pdf.setFontSize(textStyle.fontSize);
         }
 
-        // Create rows for each operation group
-        targetData.forEach((target, targetIndex) => {
-            // Only show state/symbol/set_check in first row for this transition
-            const row = [
-                targetIndex === 0 ? fromState : '',
-                targetIndex === 0 ? symbol : '',
-                targetIndex === 0 ? set_check : '',
-                target.insertion,
-                target.states
-            ];
-            
-            // Calculate required row height
-            let rowHeight = lineHeight + cellPadding * 2;
-            const cellHeights = [];
-            
-            row.forEach((cell, colIdx) => {
-                const cellHeight = pdf.getTextDimensions(cell, { maxWidth: colWidths[colIdx] - cellPadding * 2 }).h + cellPadding * 2;
-                cellHeights.push(cellHeight);
-                rowHeight = Math.max(rowHeight, cellHeight);
-            });
-
-            // Alternate row color
-            pdf.setFillColor(rowIndex % 2 === 0 ? 255 : 248, 248, 248);
-            pdf.rect(tableX, currentY, totalWidth, rowHeight, 'F');
-            pdf.setDrawColor(200);
-            pdf.rect(tableX, currentY, totalWidth, rowHeight);
-
-            // Draw cells
-            x = tableX;
-            row.forEach((cell, colIdx) => {
-                const lines = pdf.splitTextToSize(cell, colWidths[colIdx] - cellPadding * 2);
-                const textY = currentY + (rowHeight/2) - ((lines.length-1)*lineHeight/2);
-                
-                if (colIdx < 4) {
-                    pdf.line(x + colWidths[colIdx], currentY, x + colWidths[colIdx], currentY + rowHeight);
-                }
-
-                pdf.setFontSize(textStyle.fontSize);
-                pdf.setFont(undefined, 'normal');
-                
-                pdf.text(lines, x + colWidths[colIdx]/2, textY, { 
-                    align: 'center',
-                    maxWidth: colWidths[colIdx] - cellPadding * 2
-                });
-                
-                x += colWidths[colIdx];
-            });
-
-            currentY += rowHeight;
+        // Prepare the row data
+        const rowData = [
+            row.fromState,
+            row.symbol,
+            row.set_check,
+            row.insertion,
+            row.nextStates.join(', ')
+        ];
+        
+        // Calculate required row height
+        let rowHeight = lineHeight + cellPadding * 2;
+        const cellHeights = [];
+        
+        rowData.forEach((cell, colIdx) => {
+            const cellHeight = pdf.getTextDimensions(cell, { maxWidth: colWidths[colIdx] - cellPadding * 2 }).h + cellPadding * 2;
+            cellHeights.push(cellHeight);
+            rowHeight = Math.max(rowHeight, cellHeight);
         });
+
+        // Alternate row color
+        pdf.setFillColor(rowIndex % 2 === 0 ? (255, 255, 255) : (248, 248, 248));
+        pdf.rect(tableX, currentY, totalWidth, rowHeight, 'F');
+        pdf.setDrawColor(200);
+        pdf.rect(tableX, currentY, totalWidth, rowHeight);
+
+        // Draw cells
+        x = tableX;
+        rowData.forEach((cell, colIdx) => {
+            const lines = pdf.splitTextToSize(cell, colWidths[colIdx] - cellPadding * 2);
+            const textY = currentY + (rowHeight/2) - ((lines.length-1)*lineHeight/2);
+            
+            if (colIdx < 4) {
+                pdf.line(x + colWidths[colIdx], currentY, x + colWidths[colIdx], currentY + rowHeight);
+            }
+
+            pdf.setFontSize(textStyle.fontSize);
+            pdf.setFont(undefined, 'normal');
+            
+            pdf.text(lines, x + colWidths[colIdx]/2, textY, { 
+                align: 'center',
+                maxWidth: colWidths[colIdx] - cellPadding * 2
+            });
+            
+            x += colWidths[colIdx];
+        });
+
+        currentY += rowHeight;
     });
 
     return currentY;
